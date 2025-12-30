@@ -1,0 +1,14 @@
+.git
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.log
+*.tmp
+*.session
+*.sqlite3
+venv/
+.venv/
+.env
+data/
+playgram.egg-info/

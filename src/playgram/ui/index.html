@@ -1,0 +1,711 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>playgram</title>
+  <link rel="icon" href="/favicon.svg?v=2" type="image/svg+xml">
+  <link rel="alternate icon" href="/favicon.ico?v=2" type="image/x-icon">
+  <meta name="theme-color" content="#1e88e5">
+  <style>
+    body { font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 16px; display: flex; flex-direction: column; height: calc(100vh - 32px); }
+    .row { display: flex; gap: 16px; align-items: stretch; flex: 1; overflow: hidden; }
+    .col { flex: 1; min-width: 320px; display: flex; flex-direction: column; }
+    .card { border: 1px solid #ddd; border-radius: 8px; padding: 12px; display: flex; flex-direction: column; flex: 1; }
+    button { cursor: pointer; }
+    input, select { padding: 6px; }
+    .list { flex: 1; overflow: auto; }
+    .track { padding: 6px; border-bottom: 1px solid #eee; cursor: pointer; }
+    .track:hover { background: #fafafa; }
+    .track.current { background: #e3f2fd; border-left: 3px solid #2196f3; }
+    .muted { color: #666; }
+    .stars { display: inline-flex; gap: 2px; user-select: none; }
+    .star { font-size: 18px; cursor: pointer; color: #ccc; pointer-events: auto; }
+    .star.filled { color: #ffc107; }
+    .star:hover { opacity: 0.8; }
+    .filter-star { font-size: 20px; }
+    .filter-star.active { color: #ffc107; }
+    .tags { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+    .tag { border: 1px solid #ddd; border-radius: 999px; padding: 2px 8px; font-size: 12px; }
+    .tag button { border: none; background: transparent; padding: 0 0 0 6px; }
+    .player-controls { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+    .player-controls button { padding: 0; }
+    .nav-btn { background: transparent; border: none; padding: 0; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; font-size: 28px; cursor: pointer; }
+    .toggle-btn { background: transparent; border: none; padding: 0; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; font-size: 28px; position: relative; }
+    .toggle-btn.loop-off { filter: grayscale(100%) opacity(0.3); }
+    .toggle-btn.loop-all { filter: none; }
+    .toggle-btn.loop-one { filter: none; }
+    .toggle-btn.shuffle-off { filter: grayscale(100%) opacity(0.3); }
+    .toggle-btn.shuffle-on { filter: none; }
+    .sync-btn { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; font-size: 28px; border: none; background: transparent; color: #777; cursor: pointer; padding: 0; border-radius: 0; transition: color 0.12s ease; }
+    .sync-btn:hover { background: transparent; }
+    .sync-btn.sync-running { color: #1976d2; }
+    .sync-btn.sync-idle { color: #777; }
+    .favorites { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
+    .fav-slot { padding: 4px 6px; border-radius: 4px; font-size: 13px; display: flex; align-items: center; gap: 6px; background: #fff8e1; border: 1px solid #ffe082; }
+    .fav-slot a { text-decoration: none; color: inherit; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .fav-slot a:hover { text-decoration: underline; }
+    .fav-slot .fav-remove { cursor: pointer; color: #999; font-size: 14px; }
+    .fav-slot .fav-remove:hover { color: #f44336; }
+    .fav-slot.empty { background: #f5f5f5; border: 1px dashed #ddd; color: #999; }
+    .bookmark-btn { background: transparent; border: none; font-size: 20px; cursor: pointer; padding: 0; color: #ccc; }
+    .bookmark-btn.active { color: #ff9800; }
+    .bookmark-btn:hover { opacity: 0.8; }
+  </style>
+</head>
+<body>
+  <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+    <h1 style="margin: 0;">playgram</h1>
+    <button id="btnSync" class="sync-btn" title="Sync">🔄</button>
+    <span class="muted" id="syncStats"></span>
+    <span class="muted" id="syncStatus"></span>
+    <span class="muted" id="setupHint" style="margin-left: 12px;"></span>
+  </div>
+
+  <div class="row">
+    <div class="col card">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <h2 style="margin: 0;">Library</h2>
+        <span id="ratingFilter" class="stars" title="Filter by rating">
+          <span class="star filter-star" data-rating="1">★</span>
+          <span class="star filter-star" data-rating="2">★</span>
+          <span class="star filter-star" data-rating="3">★</span>
+        </span>
+      </div>
+      <div class="list" id="tracks"></div>
+    </div>
+
+    <div class="col card">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <h2 style="margin: 0;">Now Playing</h2>
+        <div id="ratingStars"></div>
+        <button id="btnBookmark" class="bookmark-btn" title="Add to favorites">🔖</button>
+      </div>
+      <div id="now"></div>
+      <div class="player-controls">
+        <button id="btnPrev" class="nav-btn" title="Previous track">⏪</button>
+        <button id="btnNext" class="nav-btn" title="Next track">⏩</button>
+        <button id="btnShuffle" class="toggle-btn shuffle-off" title="Shuffle off">🔀</button>
+        <button id="btnLoop" class="toggle-btn loop-off" title="Loop off">🔁</button>
+      </div>
+      <audio id="player" controls style="width: 100%; margin-top: 8px;"></audio>
+
+      <div style="margin-top: 16px;">
+        <h3 style="margin: 0 0 8px 0;">Favorites</h3>
+        <div id="favorites" class="favorites"></div>
+      </div>
+
+      <h3 style="margin-top: 16px;">History</h3>
+      <div class="list" id="history"></div>
+    </div>
+  </div>
+
+
+<script>
+const qs = (s) => document.querySelector(s);
+const tracksEl = qs('#tracks');
+const nowEl = qs('#now');
+const audioEl = qs('#player');
+const historyEl = qs('#history');
+const syncStatusEl = qs('#syncStatus');
+const setupHintEl = qs('#setupHint');
+const ratingStarsEl = qs('#ratingStars');
+const syncStatsEl = qs('#syncStats');
+
+let tracks = [];
+let selectedTrack = null;
+let currentTrackIndex = -1;
+let activeRatingFilter = null;
+let loopMode = localStorage.getItem('loopMode') || 'off'; // 'off', 'all', 'one'
+let shuffleMode = localStorage.getItem('shuffleMode') === 'on';
+const MAX_FAVORITES = 8;
+let favorites = JSON.parse(localStorage.getItem('favorites') || '[]');
+const favoritesEl = qs('#favorites');
+
+function applyLoopMode() {
+  const btn = qs('#btnLoop');
+  if (loopMode === 'off') {
+    btn.className = 'toggle-btn loop-off';
+    btn.title = 'Loop off';
+    btn.textContent = '🔁';
+    audioEl.loop = false;
+  } else if (loopMode === 'all') {
+    btn.className = 'toggle-btn loop-all';
+    btn.title = 'Loop all';
+    btn.textContent = '🔁';
+    audioEl.loop = false;
+  } else {
+    btn.className = 'toggle-btn loop-one';
+    btn.title = 'Loop one';
+    btn.textContent = '🔂';
+    audioEl.loop = true;
+  }
+  localStorage.setItem('loopMode', loopMode);
+}
+
+function applyShuffleMode() {
+  const btn = qs('#btnShuffle');
+  if (shuffleMode) {
+    btn.className = 'toggle-btn shuffle-on';
+    btn.title = 'Shuffle on';
+  } else {
+    btn.className = 'toggle-btn shuffle-off';
+    btn.title = 'Shuffle off';
+  }
+  localStorage.setItem('shuffleMode', shuffleMode ? 'on' : 'off');
+}
+
+function displayName(t) {
+  const a = t.artist ? t.artist.trim() : '';
+  const title = t.title ? t.title.trim() : '';
+  if (a || title) return [a, title].filter(Boolean).join(' — ');
+  return t.file_name;
+}
+
+// --- Favorites ---
+function saveFavorites() {
+  localStorage.setItem('favorites', JSON.stringify(favorites));
+}
+
+function renderFavorites() {
+  favoritesEl.innerHTML = '';
+  for (let i = 0; i < MAX_FAVORITES; i++) {
+    const fav = favorites[i];
+    const div = document.createElement('div');
+    div.className = 'fav-slot' + (fav ? '' : ' empty');
+    if (fav) {
+      const link = document.createElement('a');
+      link.href = `?track=${fav.id}`;
+      link.textContent = fav.name;
+      link.title = fav.name;
+      link.onclick = (e) => {
+        e.preventDefault();
+        const t = tracks.find(x => x.id === fav.id);
+        if (t) {
+          const idx = tracks.indexOf(t);
+          selectTrack(t, idx);
+        } else {
+          // Track not in current filter, try loading it directly
+          playTrackById(fav.id);
+        }
+      };
+      div.appendChild(link);
+      const remove = document.createElement('span');
+      remove.className = 'fav-remove';
+      remove.textContent = '✕';
+      remove.title = 'Remove from favorites';
+      remove.onclick = () => {
+        favorites.splice(i, 1);
+        saveFavorites();
+        renderFavorites();
+        updateBookmarkButton();
+      };
+      div.appendChild(remove);
+    } else {
+      div.textContent = `${i + 1}. —`;
+    }
+    favoritesEl.appendChild(div);
+  }
+}
+
+function addToFavorites(track) {
+  if (!track) return;
+  // Check if already in favorites
+  if (favorites.some(f => f.id === track.id)) return;
+  if (favorites.length >= MAX_FAVORITES) {
+    alert('Favorites full (max 8 tracks)');
+    return;
+  }
+  favorites.push({ id: track.id, name: displayName(track) });
+  saveFavorites();
+  renderFavorites();
+  updateBookmarkButton();
+}
+
+function removeFromFavorites(trackId) {
+  favorites = favorites.filter(f => f.id !== trackId);
+  saveFavorites();
+  renderFavorites();
+  updateBookmarkButton();
+}
+
+function isInFavorites(trackId) {
+  return favorites.some(f => f.id === trackId);
+}
+
+function updateBookmarkButton() {
+  const btn = qs('#btnBookmark');
+  if (selectedTrack && isInFavorites(selectedTrack.id)) {
+    btn.classList.add('active');
+    btn.title = 'Remove from favorites';
+  } else {
+    btn.classList.remove('active');
+    btn.title = 'Add to favorites';
+  }
+}
+
+// --- URL Params ---
+function updateUrlParams() {
+  if (!selectedTrack) return;
+  const pos = Math.floor(audioEl.currentTime);
+  const url = new URL(window.location.href);
+  url.searchParams.set('track', selectedTrack.id);
+  if (pos > 0) {
+    url.searchParams.set('pos', pos);
+  } else {
+    url.searchParams.delete('pos');
+  }
+  history.replaceState(null, '', url);
+}
+
+function getUrlParams() {
+  const url = new URL(window.location.href);
+  const trackId = url.searchParams.get('track');
+  const pos = parseFloat(url.searchParams.get('pos') || '0');
+  return { trackId: trackId ? parseInt(trackId) : null, pos };
+}
+
+async function playTrackById(id) {
+  // Fetch track info if not in current list
+  try {
+    const data = await api('/api/tracks');
+    const t = data.tracks.find(x => x.id === id);
+    if (t) {
+      const allTracks = data.tracks;
+      // Apply current filter
+      let filteredTracks = allTracks;
+      if (activeRatingFilter) {
+        filteredTracks = allTracks.filter(x => x.rating === activeRatingFilter);
+      }
+      // If track not in filtered list, clear filter
+      if (!filteredTracks.some(x => x.id === id)) {
+        activeRatingFilter = null;
+        document.querySelectorAll('.filter-star').forEach(s => s.classList.remove('active'));
+        filteredTracks = allTracks;
+      }
+      tracks = filteredTracks;
+      renderTracks();
+      const idx = tracks.findIndex(x => x.id === id);
+      if (idx >= 0) {
+        selectTrack(tracks[idx], idx);
+      }
+    }
+  } catch (e) {
+    console.error('Failed to load track by id:', e);
+  }
+}
+
+function renderStars(rating) {
+  return '★'.repeat(rating || 0) + '☆'.repeat(3 - (rating || 0));
+}
+
+async function api(path, opts={}) {
+  const res = await fetch(path, opts);
+  if (!res.ok) {
+    const txt = await res.text();
+    try {
+      const j = JSON.parse(txt);
+      throw new Error(j.detail || txt || (res.status + ' ' + res.statusText));
+    } catch {
+      throw new Error(txt || (res.status + ' ' + res.statusText));
+    }
+  }
+  return await res.json();
+}
+
+function renderSyncStatus(data) {
+  const active = data?.active;
+  const last = data?.last;
+  const tgEnabled = data?.telegram_enabled !== false;
+  const btn = qs('#btnSync');
+
+  const renderStats = (job) => {
+    if (!job) {
+      syncStatsEl.innerHTML = '';
+      return;
+    }
+    const msgs = job.messages_scanned ?? 0;
+    const dls = job.tracks_downloaded ?? 0;
+    const fl = job.tracks_failed ?? 0;
+    const lf = job.local_files_found ?? 0;
+    const lu = job.local_files_updated ?? 0;
+    const lo = job.local_orphans_deleted ?? 0;
+    const lc = job.local_files_created ?? 0;
+
+    let parts = [];
+    if (tgEnabled) {
+      parts.push(`<span title="TG: scanned/downloaded/failed" style="color:#1976d2">TG:${msgs}/${dls}/${fl}</span>`);
+    } else {
+      parts.push(`<span title="Telegram sync disabled. See .env SYNC_TELEGRAM_ENABLED" style="color:#999;cursor:help">TG:disabled</span>`);
+    }
+    parts.push(`<span title="LS: found/created/updated/orphans" style="color:#2e7d32">LS:${lf}/${lc}/${lu}/${lo}</span>`);
+    syncStatsEl.innerHTML = parts.join(' ');
+  };
+
+  if (active) {
+    syncStatusEl.textContent = '';
+    renderStats(active);
+    btn.classList.remove('sync-idle');
+    btn.classList.add('sync-running');
+  } else if (last) {
+    syncStatusEl.textContent = '';
+    renderStats(last);
+    btn.classList.remove('sync-running');
+    btn.classList.add('sync-idle');
+  } else {
+    syncStatusEl.textContent = '';
+    syncStatsEl.innerHTML = '';
+    btn.classList.remove('sync-running');
+    btn.classList.add('sync-idle');
+  }
+  btn.disabled = false;
+}
+
+async function fetchSyncStatus() {
+  try {
+    const st = await api('/api/sync/status');
+    renderSyncStatus(st);
+  } catch (e) {
+    syncStatusEl.textContent = `sync status error: ${e.message}`;
+  }
+}
+
+async function startSync() {
+  qs('#btnSync').disabled = true;
+  syncStatusEl.textContent = 'Starting sync…';
+  try {
+    const st = await api('/api/sync/start', { method: 'POST' });
+    renderSyncStatus(st);
+  } catch (e) {
+    syncStatusEl.textContent = `sync error: ${e.message}`;
+  } finally {
+    qs('#btnSync').disabled = false;
+  }
+}
+
+async function refreshStatus() {
+  try {
+    const st = await api('/api/status');
+    if (!st.telegram_configured) {
+      setupHintEl.textContent = 'Telegram not configured: fill .env and run python -m playgram.telegram.login';
+    } else {
+      setupHintEl.textContent = '';
+    }
+  } catch (e) {
+    setupHintEl.textContent = '';
+  }
+}
+
+function renderTracks() {
+  tracksEl.innerHTML = '';
+  for (let i = 0; i < tracks.length; i++) {
+    const t = tracks[i];
+    const div = document.createElement('div');
+    div.className = 'track';
+    if (selectedTrack && t.id === selectedTrack.id) {
+      div.classList.add('current');
+    }
+    const ratingStars = renderStars(t.rating);
+    div.innerHTML = `
+      <div><b>${escapeHtml(displayName(t))}</b> <span class="muted">${ratingStars}</span></div>
+    `;
+    div.onclick = () => selectTrack(t, i);
+    tracksEl.appendChild(div);
+  }
+}
+
+function renderSelected() {
+  if (!selectedTrack) {
+    nowEl.textContent = '';
+    ratingStarsEl.textContent = '';
+    return;
+  }
+  nowEl.innerHTML = `<div><b>${escapeHtml(displayName(selectedTrack))}</b></div>`;
+  
+  // Render rating stars
+  ratingStarsEl.innerHTML = '';
+  const starsWrap = document.createElement('div');
+  starsWrap.className = 'stars';
+  const ratingTitles = ['Low rating', 'Medium rating', 'High rating'];
+  for (let i = 1; i <= 3; i++) {
+    const star = document.createElement('span');
+    star.className = 'star';
+    star.title = ratingTitles[i - 1];
+    if (selectedTrack.rating && i <= selectedTrack.rating) {
+      star.classList.add('filled');
+    }
+    star.textContent = '★';
+    const ratingValue = i;
+    star.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      try {
+        console.log('Setting rating', ratingValue, 'for track', selectedTrack.id);
+        await api(`/api/tracks/${selectedTrack.id}/rating?rating=${ratingValue}`, { method: 'PUT' });
+        await refreshAll();
+      } catch (err) {
+        console.error('Failed to set rating:', err);
+        alert('Failed to set rating: ' + err.message);
+      }
+    });
+    starsWrap.appendChild(star);
+  }
+  ratingStarsEl.appendChild(starsWrap);
+  updateBookmarkButton();
+}
+
+qs('#btnBookmark').onclick = () => {
+  if (!selectedTrack) return;
+  if (isInFavorites(selectedTrack.id)) {
+    removeFromFavorites(selectedTrack.id);
+  } else {
+    addToFavorites(selectedTrack);
+  }
+};
+
+function escapeHtml(s) {
+  return String(s).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+}
+
+async function refreshTracks() {
+  // Fetch all tracks (no rating filter on backend)
+  const data = await api('/api/tracks');
+  let filteredTracks = data.tracks;
+  
+  // Apply rating filter locally (exact match)
+  if (activeRatingFilter) {
+    filteredTracks = filteredTracks.filter(t => t.rating === activeRatingFilter);
+  }
+  
+  tracks = filteredTracks;
+  renderTracks();
+
+  // keep selection if still visible
+  if (selectedTrack) {
+    const stillIndex = tracks.findIndex(x => x.id === selectedTrack.id);
+    if (stillIndex >= 0) {
+      currentTrackIndex = stillIndex;
+      selectedTrack = tracks[stillIndex];
+    } else {
+      selectedTrack = null;
+      currentTrackIndex = -1;
+    }
+    renderSelected();
+  }
+}
+
+async function refreshTags() {
+  const data = await api('/api/tags');
+  const tags = data.tags;
+  tagFilterEl.innerHTML = '';
+  const optAll = document.createElement('option');
+  optAll.value = '';
+  optAll.textContent = '(all)';
+  tagFilterEl.appendChild(optAll);
+  for (const t of tags) {
+    const opt = document.createElement('option');
+    opt.value = t;
+    opt.textContent = t;
+    tagFilterEl.appendChild(opt);
+  }
+}
+
+async function refreshHistory() {
+  const data = await api('/api/history?limit=50');
+  historyEl.innerHTML = '';
+  for (const h of data.history) {
+    const div = document.createElement('div');
+    div.className = 'track';
+    div.innerHTML = `<div><b>${escapeHtml(h.event)}</b> — ${escapeHtml(h.track.artist || '')} ${escapeHtml(h.track.title || h.track.file_name)}</div>
+                     <div class="muted">${escapeHtml(h.ts)}</div>`;
+    historyEl.appendChild(div);
+  }
+}
+
+async function refreshAll() {
+  await fetchSyncStatus();
+  await refreshStatus();
+  await refreshTracks();
+  await refreshHistory();
+}
+
+async function selectTrack(t, idx) {
+  selectedTrack = t;
+  currentTrackIndex = idx;
+  renderTracks();  // Re-render to highlight current track
+  renderSelected();
+  audioEl.src = `/api/tracks/${t.id}/stream`;
+  audioEl.play().catch(() => {});
+  updateUrlParams();
+}
+
+qs('#btnSync').onclick = () => {
+  startSync();
+};
+
+// Rating filter stars
+document.querySelectorAll('.filter-star').forEach(star => {
+  star.addEventListener('click', async () => {
+    const rating = parseInt(star.dataset.rating);
+    if (activeRatingFilter === rating) {
+      // Toggle off if clicking the same star
+      activeRatingFilter = null;
+      document.querySelectorAll('.filter-star').forEach(s => s.classList.remove('active'));
+    } else {
+      // Set new filter and highlight all stars up to this rating
+      activeRatingFilter = rating;
+      document.querySelectorAll('.filter-star').forEach(s => {
+        const starRating = parseInt(s.dataset.rating);
+        if (starRating <= rating) {
+          s.classList.add('active');
+        } else {
+          s.classList.remove('active');
+        }
+      });
+    }
+    await refreshTracks();
+  });
+});
+
+qs('#btnPrev').onclick = () => {
+  if (tracks.length === 0) return;
+  if (shuffleMode) {
+    if (tracks.length === 1) {
+      selectTrack(tracks[0], 0);
+      return;
+    }
+    let prevIdx = currentTrackIndex;
+    while (prevIdx === currentTrackIndex) {
+      prevIdx = Math.floor(Math.random() * tracks.length);
+    }
+    currentTrackIndex = prevIdx;
+  } else {
+    if (currentTrackIndex <= 0) {
+      currentTrackIndex = tracks.length - 1;
+    } else {
+      currentTrackIndex--;
+    }
+  }
+  selectTrack(tracks[currentTrackIndex], currentTrackIndex);
+};
+
+qs('#btnNext').onclick = () => {
+  if (tracks.length === 0) return;
+  if (shuffleMode) {
+    if (tracks.length === 1) {
+      selectTrack(tracks[0], 0);
+      return;
+    }
+    let nextIdx = currentTrackIndex;
+    while (nextIdx === currentTrackIndex) {
+      nextIdx = Math.floor(Math.random() * tracks.length);
+    }
+    currentTrackIndex = nextIdx;
+  } else {
+    if (currentTrackIndex < 0 || currentTrackIndex >= tracks.length - 1) {
+      currentTrackIndex = 0;
+    } else {
+      currentTrackIndex++;
+    }
+  }
+  selectTrack(tracks[currentTrackIndex], currentTrackIndex);
+};
+
+qs('#btnLoop').onclick = () => {
+  // Cycle through: off → all → one → off
+  if (loopMode === 'off') {
+    loopMode = 'all';
+  } else if (loopMode === 'all') {
+    loopMode = 'one';
+  } else {
+    loopMode = 'off';
+  }
+  applyLoopMode();
+};
+
+qs('#btnShuffle').onclick = () => {
+  shuffleMode = !shuffleMode;
+  applyShuffleMode();
+};
+
+// history events
+let didStart = false;
+audioEl.addEventListener('play', async () => {
+  if (!selectedTrack) return;
+  // avoid spam on auto-play retries
+  if (!didStart) {
+    didStart = true;
+    await api(`/api/tracks/${selectedTrack.id}/events?event=play`, { method: 'POST' });
+    await refreshHistory();
+  }
+});
+audioEl.addEventListener('ended', async () => {
+  if (!selectedTrack) return;
+  didStart = false;
+  await api(`/api/tracks/${selectedTrack.id}/events?event=ended`, { method: 'POST' });
+  await refreshHistory();
+  
+  // Handle loop modes
+  if (loopMode === 'one') {
+    // Track loop is handled by audioEl.loop property
+    return;
+  }
+  if (loopMode === 'all' && tracks.length > 0) {
+    if (shuffleMode) {
+      if (tracks.length > 1) {
+        let idx = currentTrackIndex;
+        while (idx === currentTrackIndex) {
+          idx = Math.floor(Math.random() * tracks.length);
+        }
+        currentTrackIndex = idx;
+      }
+    } else {
+      // Move to next track, wrap to first if at end
+      if (currentTrackIndex >= tracks.length - 1) {
+        currentTrackIndex = 0;
+      } else {
+        currentTrackIndex++;
+      }
+    }
+    selectTrack(tracks[currentTrackIndex], currentTrackIndex);
+  }
+});
+audioEl.addEventListener('pause', () => { /* no-op */ });
+
+audioEl.addEventListener('emptied', () => { didStart = false; });
+
+// Apply persisted loop mode on load
+applyLoopMode();
+applyShuffleMode();
+renderFavorites();
+
+// Update URL position periodically
+let lastUrlUpdate = 0;
+audioEl.addEventListener('timeupdate', () => {
+  const now = Date.now();
+  if (now - lastUrlUpdate > 2000) { // every 2 seconds
+    lastUrlUpdate = now;
+    updateUrlParams();
+  }
+});
+audioEl.addEventListener('pause', updateUrlParams);
+audioEl.addEventListener('seeked', updateUrlParams);
+
+// Restore from URL params after tracks load
+async function initFromUrl() {
+  const { trackId, pos } = getUrlParams();
+  if (trackId) {
+    await playTrackById(trackId);
+    if (pos > 0) {
+      audioEl.currentTime = pos;
+    }
+  }
+}
+
+refreshAll().then(() => {
+  initFromUrl();
+}).catch(e => {
+  syncStatusEl.textContent = 'error: ' + e.message;
+});
+</script>
+</body>
+</html>

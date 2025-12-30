@@ -1,0 +1,15 @@
+services:
+  playgram:
+    build: .
+    container_name: playgram
+    env_file:
+      - .env
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8000
+      RELOAD: "false"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    command: ["python", "-m", "playgram"]

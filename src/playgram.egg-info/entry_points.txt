@@ -1,0 +1,2 @@
+[console_scripts]
+playgram = playgram.__main__:main
